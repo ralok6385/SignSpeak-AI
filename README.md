@@ -4,7 +4,18 @@
 
 > Upload a sign language video or use your live camera — the AI extracts skeleton keypoints, normalizes them, and translates the sequence to English text in real-time.
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-3776AB.svg)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.1%2B-EE4C2C.svg)](https://pytorch.org/)
+[![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10%2B-00A67E.svg)](https://developers.google.com/mediapipe)
+
 ---
+
+## 🖥️ Demo
+
+> **No server required!** Just open `frontend/index.html` in your browser — Demo Mode activates automatically with simulated translations so you can explore the full UI instantly.
+
+For full AI-powered translation, start the server and open http://localhost:5000.
 
 ## ✨ Features
 
@@ -16,6 +27,7 @@
 - 🎯 **Demo Mode** — works instantly without a server (browser-only demo fallback)
 - 🌓 **Theme Support** — toggle between light and dark modes
 - 🖥️ **Premium UI** — glassmorphic interface with micro-animations
+- ⌨️ **Keyboard Shortcuts** — Space to start/stop live translation, Enter to translate video
 - 📱 **Responsive** — works on desktop and mobile
 
 ## 🏗️ Architecture
@@ -66,13 +78,14 @@ bash launch_local.sh
 ```
 SignSpeak-AI/
 ├── frontend/
-│   ├── index.html          # Main UI
+│   ├── index.html          # Main UI (glassmorphic dark/light theme)
 │   ├── app.js              # Client-side logic (tabs, camera, API calls)
-│   └── style.css           # Dark futuristic theme
+│   └── style.css           # Full theme system with light/dark modes
 ├── server.py               # Flask API server (inference + MediaPipe)
 ├── train_how2sign_t5.py    # T5 training pipeline (SignCL, CTC, temporal conv)
 ├── config.py               # Dataset path configuration
 ├── requirements.txt        # Python dependencies
+├── LICENSE                 # MIT License
 ├── models/                 # MediaPipe .task files (auto-downloaded)
 ├── runs/                   # Training checkpoints & logs
 └── DATASET/                # How2Sign dataset (not included)
@@ -103,9 +116,19 @@ All dataset paths are in [`config.py`](config.py). Run `python config.py` to ver
 - [WSL CUDA Setup](WSL_CUDA_TRAINING.md)
 - [Work Log](WORKLOG.md)
 
+## 🤝 Contributing
+
+Contributions are welcome! Feel free to open issues or submit pull requests.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
 ## 📄 License
 
-MIT
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 ---
 

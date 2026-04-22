@@ -857,6 +857,92 @@ body.light .toast {
   background: rgba(245,246,250,0.95);
   color: #1a1a2e;
 }
+/* Drop zone */
+body.light .drop-zone {
+  border-color: rgba(0,160,200,0.3);
+  background: rgba(0,0,0,0.02);
+}
+body.light .drop-zone:hover,
+body.light .drop-zone:focus-visible {
+  border-color: rgba(0,160,200,0.6);
+  box-shadow: 0 0 32px rgba(0,160,200,0.08);
+}
+/* Video wrapper */
+body.light .video-wrapper {
+  border-color: rgba(0,0,0,0.12);
+}
+/* Result panel */
+body.light .result-panel {
+  background: rgba(255,255,255,0.7);
+  border-color: rgba(0,160,200,0.2);
+  box-shadow: 0 8px 40px rgba(0,100,150,0.06);
+}
+body.light .result-text {
+  border-color: rgba(0,0,0,0.06);
+}
+/* Loading panel */
+body.light .loading-panel {
+  background: rgba(255,255,255,0.6);
+  border-color: rgba(0,0,0,0.08);
+}
+body.light .load-step.active {
+  background: rgba(0,160,200,0.08);
+}
+/* Preprocessing panel */
+body.light .preproc-panel {
+  background: rgba(168,85,247,0.04);
+  border-color: rgba(168,85,247,0.12);
+}
+/* Camera section */
+body.light .cam-placeholder {
+  background: rgba(255,255,255,0.6);
+  border-color: rgba(0,0,0,0.08);
+}
+body.light .camera-wrapper {
+  border-color: rgba(0,0,0,0.12);
+}
+/* Live panels */
+body.light .live-result-box,
+body.light .live-history-box {
+  background: rgba(255,255,255,0.6);
+  border-color: rgba(0,0,0,0.08);
+}
+body.light .history-item {
+  background: rgba(0,0,0,0.03);
+}
+/* How it works */
+body.light .how-details {
+  background: rgba(255,255,255,0.6);
+  border-color: rgba(0,0,0,0.08);
+}
+body.light .pipe-step {
+  background: rgba(0,160,200,0.03);
+  border-color: rgba(0,160,200,0.08);
+}
+body.light .pipe-step:hover {
+  background: rgba(0,160,200,0.06);
+  border-color: rgba(0,160,200,0.15);
+}
+/* Model strip */
+body.light .model-strip {
+  background: rgba(0,160,200,0.04);
+  border-color: rgba(0,160,200,0.1);
+}
+body.light .model-chip {
+  background: rgba(255,255,255,0.6);
+  border-color: rgba(0,0,0,0.08);
+}
+/* Upload history */
+body.light .upload-history-item {
+  background: rgba(0,0,0,0.02);
+}
+/* Scrollbar */
+body.light ::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.12);
+}
+body.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.2);
+}
 
 /* ── Keyboard shortcut hints ──────────────────────────────────────────── */
 .kbd-hint {

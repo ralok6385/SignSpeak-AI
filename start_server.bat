@@ -27,16 +27,12 @@ echo  █  (Browser will open automatically in 5 seconds)      █
 echo  ████████████████████████████████████████████████████████
 echo.
 
-:: Start the server in the background then open browser
-start "" /B python server.py
-
-:: Wait 8 seconds for model to load, then open browser
-timeout /t 8 /nobreak >nul
-start "" http://localhost:5000
+:: Open browser after a short delay (runs in parallel)
+start "" cmd /c "timeout /t 8 /nobreak >nul & start \"\" http://localhost:5000"
 
 echo  Server is running. Press Ctrl+C to stop.
 echo.
 
-:: Keep the window open and show server output
+:: Run server in foreground (keeps window open, shows logs)
 python server.py
 pause
