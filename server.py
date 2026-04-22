@@ -23,8 +23,9 @@ from pathlib import Path
 # ── Pathlib Compatibility Hack (for macOS -> Linux model loading) ────────────
 import pathlib
 class PathlibMock: pass
-if not hasattr(pathlib, '_local'):
-    pathlib._local = PathlibMock
+pathlib._local = PathlibMock
+pathlib.WindowsPath = Path
+pathlib.PosixPath = Path
 sys.modules['pathlib._local'] = PathlibMock
 
 import os
