@@ -983,3 +983,30 @@ body.light ::-webkit-scrollbar-thumb:hover {
   font-family: monospace;
 }
 
+/* ── Floating Reactions ─────────────────────────────────────────────────── */
+.floating-reaction {
+  position: absolute;
+  font-size: 3.5rem;
+  pointer-events: none;
+  z-index: 1000;
+  animation: float-up 2.5s ease-out forwards;
+  opacity: 0;
+  transform: translate(-50%, 0) scale(0.5) rotate(0deg);
+  text-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+@keyframes float-up {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0) scale(0.5) rotate(0deg);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -30px) scale(1.2) rotate(var(--rot, 10deg));
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -250px) scale(1) rotate(calc(var(--rot, 10deg) * 1.5));
+  }
+}
+

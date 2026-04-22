@@ -837,8 +837,35 @@ function updateLivePrediction(text, conf) {
   void dom.liveText.offsetWidth; // reflow to restart animation
   dom.liveText.classList.add('updated');
 
+  // Trigger floating emoji reaction for certain signs!
+  if (text.toLowerCase().includes('love') || text.toLowerCase().includes('heart')) {
+    triggerReaction('❤️');
+  } else if (text.toLowerCase() === 'hello') {
+    triggerReaction('👋');
+  }
+
   // Auto-speak (respects mute toggle)
   if (!state.muted) speak(text);
+}
+
+function triggerReaction(emoji) {
+  const container = dom.cameraSection || document.body;
+  for (let i = 0; i < 6; i++) {
+    const el = document.createElement('div');
+    el.textContent = emoji;
+    el.className = 'floating-reaction';
+    // Random position horizontally, starting near the bottom of the camera section
+    el.style.left = (40 + Math.random() * 20) + '%';
+    el.style.top = (70 + Math.random() * 10) + '%';
+    el.style.animationDelay = (Math.random() * 0.3) + 's';
+    
+    // Slight random rotation
+    const rotation = (Math.random() * 40) - 20;
+    el.style.setProperty('--rot', rotation + 'deg');
+
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 2500);
+  }
 }
 
 function addToHistory(text) {
