@@ -38,7 +38,7 @@
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/your-username/SignSpeak-AI.git
+git clone https://github.com/ralok6385/SignSpeak-AI.git
 cd SignSpeak-AI
 pip install -r requirements.txt
 ```
