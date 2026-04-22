@@ -39,8 +39,10 @@ const DEMO_POOL = [
 
 let _lastDemoText = '';
 
+let _demoIndex = 0;
+
 /**
- * Return modelOutput if it looks good; otherwise pick a random demo sentence.
+ * Return modelOutput if it looks good; otherwise pick a sequential demo sentence.
  * TODO: remove demo fallback when model is fully trained
  */
 function getFinalText(modelOutput) {
@@ -53,8 +55,8 @@ function getFinalText(modelOutput) {
   );
 
   if (isBad) {
-    const choices = DEMO_POOL.filter(s => s !== _lastDemoText);
-    const picked  = choices[Math.floor(Math.random() * choices.length)];
+    const picked = DEMO_POOL[_demoIndex % DEMO_POOL.length];
+    _demoIndex++;
     _lastDemoText = picked;
     return picked;
   }
@@ -271,8 +273,8 @@ function activateDemoMode() {
 }
 
 function getDemoText() {
-  const choices = DEMO_POOL.filter(s => s !== _lastDemoText);
-  const picked  = choices[Math.floor(Math.random() * choices.length)];
+  const picked = DEMO_POOL[_demoIndex % DEMO_POOL.length];
+  _demoIndex++;
   _lastDemoText = picked;
   return picked;
 }
