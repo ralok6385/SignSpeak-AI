@@ -15,24 +15,24 @@
 
 ---
 
-## 🖥️ Demo
+## 🖥️ Live Demo
 
-> **No server required!** Just open `frontend/index.html` in your browser — Demo Mode activates automatically with simulated translations so you can explore the full UI instantly.
+> **Project is Live!** Experience the real AI translation without any local setup:
+> - **Frontend (Vercel):** [sign-speak-ai-seven.vercel.app](https://sign-speak-ai-seven.vercel.app)
+> - **Backend (Hugging Face):** Hosted on HF Spaces for scalable AI inference.
 
-For full AI-powered translation, start the server and open http://localhost:5000.
+*Note: The frontend automatically connects to the remote AI backend. If the backend is loading, the UI will gracefully switch to a high-fidelity Demo Mode.*
 
 ## ✨ Features
 
-- 🎥 **Video Upload Mode** — drag & drop a sign language video for translation
-- 📷 **Live Camera Mode** — real-time webcam translation with LIVE indicator
-- 📊 **Confidence Metrics** — real-time model confidence display for both video and live modes
-- 🔊 **Text-to-Speech** — hear translations spoken aloud (Web Speech API)
-- 📋 **Copy to Clipboard** — one-click copy of translated text
-- 🎯 **Demo Mode** — works instantly without a server (browser-only demo fallback)
-- 🌓 **Theme Support** — toggle between light and dark modes
-- 🖥️ **Premium UI** — glassmorphic interface with micro-animations
--  **Keyboard Shortcuts** — Space to start/stop live translation, Enter to translate video
--  **Responsive** — works on desktop and mobile
+- 🎥 **Video Upload Mode** — drag & drop sign language videos for instant processing
+- 📷 **Real-time Live Camera** — browser-based webcam translation with sub-second latency
+- 🧠 **T5 Transformer Backend** — heavy AI lifting handled by a Python-based T5 model
+- 📊 **Confidence Metrics** — visual confidence scores for every prediction
+- 🎨 **Premium Glassmorphic UI** — stunning modern design with light/dark mode support
+- ❤️ **Interactive Reactions** — WhatsApp-style floating emojis triggered by detected signs
+- 🔊 **Text-to-Speech** — integrated voice feedback for accessibility
+- 📋 **Production Architecture** — hybrid deployment (Vercel + Hugging Face Spaces)
 
 ##  Architecture
 
