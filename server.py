@@ -17,15 +17,30 @@ import argparse
 import base64
 import json
 import math
+import sys
+from pathlib import Path
+
+# ── Pathlib Compatibility Hack (for macOS -> Linux model loading) ────────────
+if sys.platform != "darwin":
+    import pathlib
+    if not hasattr(pathlib, 'PosixPath'):
+        pathlib.PosixPath = pathlib.Path
+    # Fix for newer Python pathlib internal changes
+    try:
+        import pathlib as pl
+        if not hasattr(pl, '_local'):
+            class _local: pass
+            pl._local = _local
+    except:
+        pass
+
 import os
 import random
-import sys
 import tempfile
 import threading
 import time
 import urllib.request
 from collections import deque
-from pathlib import Path
 
 import cv2
 import numpy as np
