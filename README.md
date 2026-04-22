@@ -15,13 +15,14 @@
 
 ---
 
-## 🖥️ Live Demo
+## 🚀 Live Deployments
 
-> **Project is Live!** Experience the real AI translation without any local setup:
-> - **Frontend (Vercel):** [sign-speak-ai-seven.vercel.app](https://sign-speak-ai-seven.vercel.app)
-> - **Backend (Hugging Face):** Hosted on HF Spaces for scalable AI inference.
-
-*Note: The frontend automatically connects to the remote AI backend. If the backend is loading, the UI will gracefully switch to a high-fidelity Demo Mode.*
+> **Experience the project live!** This application utilizes a decoupled, microservices architecture:
+>
+> 🌐 **Frontend App (Vercel):** [sign-speak-ai-seven.vercel.app](https://sign-speak-ai-seven.vercel.app)
+> 🧠 **Inference API (Hugging Face):** [ralok/signspeak-backend](https://huggingface.co/spaces/ralok/signspeak-backend)
+> 
+> *Note: The frontend automatically connects to the remote AI backend. If the backend container is spinning up, the UI gracefully falls back to a high-fidelity Demo Mode.*
 
 ## ✨ Features
 
