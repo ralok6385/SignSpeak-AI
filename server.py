@@ -131,8 +131,11 @@ def _init_mediapipe() -> None:
         _pose_detector = _mp_vis.PoseLandmarker.create_from_options(pose_opts)
         _hand_detector = _mp_vis.HandLandmarker.create_from_options(hand_opts)
         HAS_MEDIAPIPE  = True
+        _state["mp_error"] = None
         print("[mediapipe] Landmarkers ready ✓")
     except Exception as exc:
+        HAS_MEDIAPIPE = False
+        _state["mp_error"] = str(exc)
         print(f"[mediapipe] Unavailable: {exc}")
 
 # ── Flask app ──────────────────────────────────────────────────────────────────
@@ -146,6 +149,7 @@ _state: dict = {
     "use_face": False, "max_frames": 256,
     "max_gen_tokens": 64, "min_conf": 0.1,
     "checkpoint_epoch": None, "loaded": False, "error": None,
+    "mp_error": "Initializing...",
 }
 _lock       = threading.Lock()
 _mp_lock    = threading.Lock()
@@ -398,6 +402,7 @@ def status():
         "error":            _state["error"],
         "device":           str(_device),
         "mediapipe":        HAS_MEDIAPIPE,
+        "mp_error":         _state.get("mp_error"),
         "mediapipe_models": {
             "pose": _POSE_TASK.exists(),
             "hand": _HAND_TASK.exists(),
