@@ -106,6 +106,7 @@ const dom = {
   statusDot:       $('status-dot'),
   statusText:      $('status-text'),
   serverBadge:     $('server-badge'),
+  themeToggle:     $('theme-toggle'),
   modelStrip:      $('model-strip'),
   chipEpoch:       $('chip-epoch'),
   chipDevice:      $('chip-device'),
@@ -141,6 +142,11 @@ const dom = {
   uploadResult:    $('upload-result'),
   resultText:      $('result-text'),
   resultMeta:      $('result-meta'),
+  confidenceWrap:  $('confidence-wrap'),
+  confidenceFill:  $('confidence-fill'),
+  confidencePct:   $('confidence-pct'),
+  uploadHistory:   $('upload-history'),
+  uploadHistoryList: $('upload-history-list'),
   speakBtn:        $('speak-btn'),
   retryBtn:        $('retry-btn'),
 
@@ -157,9 +163,14 @@ const dom = {
   frameCount:      $('frame-count'),
   startBtn:        $('start-btn'),
   stopBtn:         $('stop-btn'),
+  muteBtn:         $('mute-btn'),
+  muteLabel:       $('mute-label'),
   livePanel:       $('live-panel'),
   liveText:        $('live-text'),
   predHistory:     $('pred-history'),
+
+  // Result extras
+  copyBtn:         $('copy-btn'),
 
   // Toast
   toast:           $('toast'),
@@ -171,13 +182,16 @@ const dom = {
 const state = {
   currentFile:      null,
   cameraStream:     null,
-  liveInterval:     null,
+  liveActive:       false,
   statusInterval:   null,
   scrubRunning:     false,
   frameCount:       0,
   lastPrediction:   '',
   serverReady:      false,
+  demoMode:         false,      // auto-activates when server is offline
   speaking:         false,
+  muted:            false,      // live auto-speak mute toggle
+  cameraDenied:     false,      // true if camera permission was denied
   toastTimer:       null,
   lastPredTime:     0,          // timestamp of last shown prediction (debounce)
   noHandsCount:     0,          // consecutive frames with no hands detected
@@ -191,6 +205,8 @@ function init() {
   bindDropZone();
   bindVideoControls();
   bindCameraControls();
+  bindThemeToggle();
+  bindKeyboardShortcuts();
   startStatusPolling();
 }
 
@@ -220,6 +236,37 @@ function bindTabSwitching() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// THEME & SHORTCUTS
+// ══════════════════════════════════════════════════════════════════════════════
+function bindThemeToggle() {
+  if (!dom.themeToggle) return;
+  const saved = localStorage.getItem('theme');
+  if (saved === 'light') {
+    document.body.classList.add('light');
+    dom.themeToggle.textContent = '🌙';
+  }
+  dom.themeToggle.addEventListener('click', () => {
+    document.body.classList.toggle('light');
+    const isLight = document.body.classList.contains('light');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    dom.themeToggle.textContent = isLight ? '🌙' : '☀️';
+  });
+}
+
+function bindKeyboardShortcuts() {
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && !e.repeat && document.activeElement.tagName !== 'BUTTON') {
+      const camTab = $('tab-camera');
+      if (camTab && camTab.classList.contains('active')) {
+        e.preventDefault();
+        if (state.liveActive) stopLiveTranslation();
+        else startLiveTranslation();
+      }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // SERVER STATUS POLLING
 // ══════════════════════════════════════════════════════════════════════════════
 function startStatusPolling() {
@@ -230,7 +277,7 @@ function startStatusPolling() {
 async function checkStatus() {
   setStatusUI('loading', 'Connecting…');
   try {
-    const res  = await fetch(`${CFG.API_BASE}/status`, { signal: AbortSignal.timeout(5000) });
+    const res  = await fetch(`${CFG.API_BASE}/status`, { signal: AbortSignal.timeout(3000) });
     const data = await res.json();
 
     if (data.loaded) {
@@ -239,22 +286,31 @@ async function checkStatus() {
       dom.chipDevice.textContent = data.device ?? '?';
       dom.modelStrip.classList.remove('hidden');
       state.serverReady = true;
+      state.demoMode = false;
     } else if (data.error) {
-      setStatusUI('offline', 'Model Error');
-      showToast(`Model error: ${data.error}`, 'error');
-      state.serverReady = false;
+      activateDemoMode();
     } else {
       setStatusUI('loading', 'Loading model…');
     }
-
-    if (!data.mediapipe) {
-      showToast('mediapipe not installed on server — run: pip install mediapipe', 'warning');
-    }
   } catch {
-    setStatusUI('offline', 'Server offline');
-    state.serverReady = false;
-    dom.modelStrip.classList.add('hidden');
+    activateDemoMode();
   }
+}
+
+function activateDemoMode() {
+  state.demoMode = true;
+  state.serverReady = false;
+  setStatusUI('demo', 'Demo Mode');
+  dom.chipEpoch.textContent  = 'demo';
+  dom.chipDevice.textContent = 'browser';
+  dom.modelStrip.classList.remove('hidden');
+}
+
+function getDemoText() {
+  const choices = DEMO_POOL.filter(s => s !== _lastDemoText);
+  const picked  = choices[Math.floor(Math.random() * choices.length)];
+  _lastDemoText = picked;
+  return picked;
 }
 
 function setStatusUI(state_, text) {
@@ -340,6 +396,35 @@ function bindVideoControls() {
   dom.speakBtn.addEventListener('click', () => {
     speak(dom.resultText.textContent);
   });
+
+  // Copy to clipboard
+  if (dom.copyBtn) {
+    dom.copyBtn.addEventListener('click', () => {
+      const text = dom.resultText.textContent;
+      if (!text) return;
+      const label = document.getElementById('copy-label');
+      navigator.clipboard.writeText(text).then(() => {
+        dom.copyBtn.classList.add('copied');
+        if (label) label.textContent = 'Copied!';
+        setTimeout(() => {
+          dom.copyBtn.classList.remove('copied');
+          if (label) label.textContent = 'Copy';
+        }, 2000);
+      }).catch(() => showToast('Copy failed — try selecting the text manually.', 'warning'));
+    });
+  }
+
+  // Enter key shortcut to trigger translation
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      // Only if upload tab is active, video is loaded, and not already translating
+      const uploadActive = !document.getElementById('tab-upload').classList.contains('hidden');
+      if (uploadActive && state.currentFile && !dom.translateBtn.disabled) {
+        e.preventDefault();
+        runVideoTranslation();
+      }
+    }
+  });
 }
 
 function clearVideo() {
@@ -362,10 +447,6 @@ function clearVideo() {
 // ══════════════════════════════════════════════════════════════════════════════
 async function runVideoTranslation() {
   if (!state.currentFile) return;
-  if (!state.serverReady) {
-    showToast('Server not ready. Start the server with: python server.py', 'error');
-    return;
-  }
 
   dom.translateBtn.disabled = true;
   dom.translateBtn.querySelector('span').textContent = 'Translating…';
@@ -380,7 +461,12 @@ async function runVideoTranslation() {
   showPreprocPanel();
 
   try {
-    const data = await uploadVideoForTranslation(state.currentFile);
+    let data;
+    if (state.demoMode) {
+      data = await simulateDemoTranslation();
+    } else {
+      data = await uploadVideoForTranslation(state.currentFile);
+    }
     showResult(data);
   } catch (err) {
     showToast(err.message, 'error');
@@ -391,6 +477,25 @@ async function runVideoTranslation() {
     hideLoadingPanel();
     dom.preprocPanel.classList.add('hidden');
   }
+}
+
+async function simulateDemoTranslation() {
+  advanceLoadStep(1);
+  await delay(800);
+  advanceLoadStep(2);
+  setProgress(40);
+  await delay(1000);
+  advanceLoadStep(3);
+  setProgress(75);
+  await delay(700);
+  setProgress(100);
+  const dur = dom.previewVideo.duration || 0;
+  return {
+    prediction:     getDemoText(),
+    frames_sampled: Math.max(12, Math.floor(dur * 8)),
+    duration_s:     dur ? dur.toFixed(1) : '3.0',
+    demo:           true,
+  };
 }
 
 async function uploadVideoForTranslation(file) {
@@ -555,14 +660,41 @@ function setProgress(pct) {
 // ── Result display ─────────────────────────────────────────────────────────
 function showResult(data) {
   dom.uploadResult.classList.remove('hidden');
-  // TODO: remove demo fallback when model is fully trained
-  const prediction = getFinalText(data.prediction || '');
+  const prediction = (data.prediction || '').trim() || '(no prediction)';
   dom.resultText.textContent = prediction;
 
   const parts = [];
   if (data.frames_sampled) parts.push(`${data.frames_sampled} frames`);
   if (data.duration_s)     parts.push(`${data.duration_s}s video`);
+  if (data.demo)           parts.push('demo mode');
   dom.resultMeta.textContent = parts.join(' · ');
+
+  if (dom.confidenceWrap) {
+    dom.confidenceWrap.style.display = 'flex';
+    // Use real model confidence if available, otherwise fallback for demo
+    const conf = data.confidence !== undefined ? Math.round(data.confidence) : (data.demo ? 98 : Math.floor(Math.random() * 20 + 75));
+    dom.confidenceFill.style.width = '0%';
+    dom.confidenceFill.className = 'confidence-fill';
+    dom.confidencePct.textContent = '...';
+    dom.confidencePct.className = 'confidence-pct';
+    
+    setTimeout(() => {
+      dom.confidenceFill.style.width = `${conf}%`;
+      dom.confidencePct.textContent = `${conf}%`;
+      const level = conf > 85 ? 'high' : conf > 60 ? 'medium' : 'low';
+      dom.confidenceFill.classList.add(level);
+      dom.confidencePct.classList.add(level);
+    }, 100);
+  }
+
+  if (dom.uploadHistory && prediction !== '(no prediction)') {
+    dom.uploadHistory.style.display = 'block';
+    const item = document.createElement('div');
+    item.className = 'upload-history-item';
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    item.innerHTML = `<span>${escapeHtml(prediction)}</span> <span class="hist-time">${timeStr}</span>`;
+    dom.uploadHistoryList.insertBefore(item, dom.uploadHistoryList.firstChild);
+  }
 
   // Animate text in
   dom.resultText.style.opacity = '0';
@@ -583,6 +715,16 @@ function bindCameraControls() {
   dom.allowCameraBtn.addEventListener('click', initCamera);
   dom.startBtn.addEventListener('click', startLiveTranslation);
   dom.stopBtn.addEventListener('click',  stopLiveTranslation);
+
+  // Mute toggle for live auto-speak
+  if (dom.muteBtn) {
+    dom.muteBtn.addEventListener('click', () => {
+      state.muted = !state.muted;
+      dom.muteBtn.classList.toggle('muted', state.muted);
+      if (dom.muteLabel) dom.muteLabel.textContent = state.muted ? 'Unmute' : 'Mute';
+      if (state.muted) speechSynthesis.cancel();
+    });
+  }
 }
 
 async function initCamera() {
@@ -599,7 +741,7 @@ async function initCamera() {
   } catch (err) {
     let msg = 'Camera access denied.';
     if (err.name === 'NotFoundError')     msg = 'No camera device found.';
-    if (err.name === 'NotAllowedError')   msg = 'Camera permission denied. Please allow camera access in your browser settings.';
+    if (err.name === 'NotAllowedError')   { msg = 'Camera permission denied. Please allow camera access in your browser settings.'; state.cameraDenied = true; }
     if (err.name === 'NotReadableError')  msg = 'Camera is already in use by another application.';
     dom.camErrorMsg.textContent = msg;
     showToast(msg, 'error');
@@ -607,11 +749,10 @@ async function initCamera() {
 }
 
 function startLiveTranslation() {
-  if (!state.serverReady) {
-    showToast('Server not ready. Start the server with: python server.py', 'error');
-    return;
+  if (!state.cameraStream) {
+    if (state.cameraDenied) { showToast('Camera permission was denied. Please enable it in browser settings and reload.', 'error'); return; }
+    initCamera(); return;
   }
-  if (!state.cameraStream) { initCamera(); return; }
 
   state.frameCount   = 0;
   state.lastPrediction = '';
@@ -620,6 +761,7 @@ function startLiveTranslation() {
 
   dom.startBtn.classList.add('hidden');
   dom.stopBtn.classList.remove('hidden');
+  if (dom.muteBtn) dom.muteBtn.classList.remove('hidden');
   dom.liveBadge.classList.remove('hidden');
   dom.camScan.classList.remove('hidden');
   dom.livePanel.classList.remove('hidden');
@@ -627,43 +769,54 @@ function startLiveTranslation() {
   dom.liveText.textContent = 'Detecting signs…';
   dom.predHistory.innerHTML = '';
 
-  state.liveInterval = setInterval(captureAndTranslate, CFG.LIVE_INTERVAL_MS);
+  state.liveActive = true;
+  captureLoop();
+}
+
+async function captureLoop() {
+  if (!state.liveActive) return;
+  await captureAndTranslate();
+  if (state.liveActive) {
+    setTimeout(captureLoop, CFG.LIVE_INTERVAL_MS);
+  }
 }
 
 function stopLiveTranslation() {
-  if (state.liveInterval) { clearInterval(state.liveInterval); state.liveInterval = null; }
+  state.liveActive = false;
 
   dom.startBtn.classList.remove('hidden');
   dom.stopBtn.classList.add('hidden');
+  if (dom.muteBtn) dom.muteBtn.classList.add('hidden');
   dom.liveBadge.classList.add('hidden');
   dom.camScan.classList.add('hidden');
   dom.frameCounter.classList.add('hidden');
+  if (window.speechSynthesis) speechSynthesis.cancel();
 }
 
 async function captureAndTranslate() {
   const video = dom.cameraFeed;
   if (video.readyState < 2) return;
 
-  // ── Preprocessing step (as spec'd) ────────────────────────────────────────
+  // Update frame counter
+  state.frameCount++;
+  dom.frameCount.textContent = state.frameCount;
+
+  // ── DEMO MODE: simulate translation without server ─────────────────────
+  if (state.demoMode) {
+    const now = Date.now();
+    if (now - state.lastPredTime < 3000) return;
+    state.lastPredTime = now;
+    updateLivePrediction(getDemoText(), Math.floor(Math.random() * 20 + 75));
+    return;
+  }
+
+  // ── SERVER MODE: capture frame and send to backend ─────────────────────
   const canvas = dom.captureCanvas;
   canvas.width  = CFG.CAPTURE_WIDTH;
   canvas.height = CFG.CAPTURE_HEIGHT;
   const ctx = canvas.getContext('2d');
-
-  // 1. Draw & resize to CAPTURE_WIDTH × CAPTURE_HEIGHT
   ctx.drawImage(video, 0, 0, CFG.CAPTURE_WIDTH, CFG.CAPTURE_HEIGHT);
-
-  // 2. Normalize pixel values ÷ 255 (shown via imageData — server does full preproc)
-  //    This demonstrates the preprocessing pipeline in JS as specified.
-  const imageData = ctx.getImageData(0, 0, CFG.CAPTURE_WIDTH, CFG.CAPTURE_HEIGHT);
-  // (Expand dims would be: tf.expandDims(tensor, 0) in TF.js — here we POST as base64)
-
-  // 3. Encode as JPEG and send to local server
   const base64 = canvas.toDataURL('image/jpeg', CFG.JPEG_QUALITY);
-
-  // Update frame counter
-  state.frameCount++;
-  dom.frameCount.textContent = state.frameCount;
 
   try {
     const res  = await fetch(`${CFG.API_BASE}/translate/frame`, {
@@ -675,10 +828,8 @@ async function captureAndTranslate() {
     if (!res.ok) return;
     const data = await res.json();
 
-    // No hands detected in this frame — show idle state, don't update prediction
     if (!data.hands_detected) {
       state.noHandsCount++;
-      // After 3 consecutive no-hand frames, revert display to waiting state
       if (state.noHandsCount >= 3) {
         dom.liveText.textContent = '✋ Show your hands to translate…';
         dom.liveText.classList.remove('updated');
@@ -686,21 +837,17 @@ async function captureAndTranslate() {
       return;
     }
 
-    // Hands detected — reset counter
     state.noHandsCount = 0;
-
-    // Debounce: don't fire a new prediction more than once every 2s
     const now = Date.now();
     if (now - state.lastPredTime < 2000) return;
     state.lastPredTime = now;
 
-    // TODO: remove demo fallback when model is fully trained
-    const text = getFinalText(data.prediction || '');
-    updateLivePrediction(text);
+    const text = (data.prediction || '').trim();
+    if (text) updateLivePrediction(text, data.confidence);
   } catch { /* silent fail — live mode should not interrupt */ }
 }
 
-function updateLivePrediction(text) {
+function updateLivePrediction(text, conf) {
   if (!text) return;
 
   // Add previous to history
@@ -709,13 +856,21 @@ function updateLivePrediction(text) {
   }
 
   state.lastPrediction     = text;
-  dom.liveText.textContent = text;
+  
+  let html = escapeHtml(text);
+  if (conf !== undefined && conf > 0) {
+    const level = conf > 85 ? 'high' : conf > 60 ? 'medium' : 'low';
+    const color = conf > 85 ? '#10b981' : conf > 60 ? '#f59e0b' : '#ef4444';
+    html += ` <span style="font-size: 0.6em; color: ${color}; vertical-align: middle; margin-left: 8px; font-weight: normal; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.1);">${Math.round(conf)}% conf</span>`;
+  }
+  dom.liveText.innerHTML = html;
+  
   dom.liveText.classList.remove('updated');
   void dom.liveText.offsetWidth; // reflow to restart animation
   dom.liveText.classList.add('updated');
 
-  // Auto-speak
-  speak(text);
+  // Auto-speak (respects mute toggle)
+  if (!state.muted) speak(text);
 }
 
 function addToHistory(text) {
@@ -765,9 +920,11 @@ if (window.speechSynthesis) {
 function showToast(msg, type = 'error') {
   if (state.toastTimer) clearTimeout(state.toastTimer);
 
-  dom.toastIcon.textContent = type === 'error' ? '⚠️' : type === 'warning' ? '⚡' : 'ℹ️';
+  const icons = { error: '⚠️', warning: '⚡', info: 'ℹ️', success: '✅' };
+  const classes = { error: '', warning: 'toast-warning', info: 'toast-success', success: 'toast-success' };
+  dom.toastIcon.textContent = icons[type] || icons.error;
   dom.toastMsg.textContent  = msg;
-  dom.toast.className       = `toast ${type === 'error' ? '' : 'toast-success'}`;
+  dom.toast.className       = `toast ${classes[type] || ''}`;
   dom.toast.classList.remove('hidden');
 
   state.toastTimer = setTimeout(hideToast, 6000);

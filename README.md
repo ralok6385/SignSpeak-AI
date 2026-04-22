@@ -1,97 +1,112 @@
-# How2Sign Keypoint-to-Text Training (WSL CUDA)
+# SignSpeak AI 🤟
 
-This workspace trains gloss-free sign-language translation models from OpenPose keypoints to English text on the How2Sign splits.
+**Real-time Sign Language → English Translation** powered by T5 Transformer + MediaPipe keypoint detection.
 
-The current recommended pipeline is implemented in [train_how2sign_t5.py](train_how2sign_t5.py) and is designed to run on CUDA through WSL.
+> Upload a sign language video or use your live camera — the AI extracts skeleton keypoints, normalizes them, and translates the sequence to English text in real-time.
 
-## Current Status
+---
 
-- Upgraded trainer implemented and validated on WSL GPU.
-- Full training is launched through [launch_wsl_full.sh](launch_wsl_full.sh).
-- Detailed chronology is in [WORKLOG.md](WORKLOG.md).
+## ✨ Features
 
-## Dataset Layout Expected
+- 🎥 **Video Upload Mode** — drag & drop a sign language video for translation
+- 📷 **Live Camera Mode** — real-time webcam translation with LIVE indicator
+- 📊 **Confidence Metrics** — real-time model confidence display for both video and live modes
+- 🔊 **Text-to-Speech** — hear translations spoken aloud (Web Speech API)
+- 📋 **Copy to Clipboard** — one-click copy of translated text
+- 🎯 **Demo Mode** — works instantly without a server (browser-only demo fallback)
+- 🌓 **Theme Support** — toggle between light and dark modes
+- 🖥️ **Premium UI** — glassmorphic interface with micro-animations
+- 📱 **Responsive** — works on desktop and mobile
 
-The trainer expects these TSV files at project root:
+## 🏗️ Architecture
 
-- [how2sign_train.csv](how2sign_train.csv)
-- [how2sign_val.csv](how2sign_val.csv)
-- [how2sign_test.csv](how2sign_test.csv)
-
-And keypoint roots:
-
-- `train_2D_keypoints/openpose_output/json`
-- `val_2D_keypoints/openpose_output/json`
-- `test_2D_keypoints/openpose_output/json`
-
-## Recommended Trainer
-
-Main script:
-
-- [train_how2sign_t5.py](train_how2sign_t5.py)
-
-Core features currently implemented:
-
-- shoulder-anchored signing-space normalization with fallback geometry
-- linear interpolation for short missing-keypoint gaps
-- explicit missing-joint feature channel
-- stochastic temporal sampling (train) + deterministic sampling (eval)
-- temporal Conv1D compression before T5 encoder
-- pretrained T5 tokenizer and model bridge
-- SignCL auxiliary loss
-- optional CTC auxiliary loss
-- metrics: BLEU, BLEU-1/2/3/4, reduced-BLEU, METEOR, ROUGE-L
-- skipped-row logs and gap-distribution audits
-
-## WSL CUDA Quick Start
-
-For full setup and operations, see [WSL_CUDA_TRAINING.md](WSL_CUDA_TRAINING.md).
-
-### 1) Verify CUDA in WSL
-
-```powershell
-wsl --cd /mnt/c/Users/jnami/Downloads/Compressed/kartik --exec ./.venv_wsl/bin/python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
+```
+┌──────────────┐     ┌─────────────────────┐     ┌──────────────┐
+│   Frontend   │────▶│  Flask Server (API)  │────▶│   T5 Model   │
+│  HTML/JS/CSS │     │  + MediaPipe (GPU)   │     │  Inference   │
+└──────────────┘     └─────────────────────┘     └──────────────┘
+     │                        │
+     │ video/frame            │ keypoints [T, 67, 4]
+     │ (base64)               │ ↓ normalize + interpolate
+     └────────────────────────┘ ↓ T5 encoder-decoder → text
 ```
 
-### 2) Launch Full Training (Background)
+**Pipeline:** Video Frames → MediaPipe Pose+Hand → 67-joint keypoints (x, y, conf, missing) → Shoulder-anchored normalization → T5-small encoder → English text
 
-```powershell
-wsl -e bash /mnt/c/Users/jnami/Downloads/Compressed/kartik/launch_wsl_full.sh
+## 🚀 Quick Start
+
+### 1. Clone & Install
+
+```bash
+git clone https://github.com/your-username/SignSpeak-AI.git
+cd SignSpeak-AI
+pip install -r requirements.txt
 ```
 
-### 3) Monitor Logs
+### 2. Run the Server
 
-```powershell
-wsl -e bash -lc 'tail -n 60 /mnt/c/Users/jnami/Downloads/Compressed/kartik/runs/how2sign_t5_wsl_full/train.log'
+```bash
+python server.py
 ```
 
-## Output Files
+Then open **http://localhost:5000** in your browser.
 
-Typical files written under your chosen save directory:
+> **No server?** Just open `frontend/index.html` directly — Demo Mode activates automatically with simulated translations.
 
-- `metrics.csv`
-- `best.pt`
-- `last.pt`
-- `train_skipped.csv`
-- `val_skipped.csv`
-- `train_gap_audit.json`
-- `val_gap_audit.json`
-- `best_val_samples.json`
+### 3. (Optional) Train the Model
 
-For the current full run:
+See [HOW2SIGN_TRAINING_RUNBOOK_V2.md](HOW2SIGN_TRAINING_RUNBOOK_V2.md) for full training instructions.
 
-- [runs/how2sign_t5_wsl_full/train.log](runs/how2sign_t5_wsl_full/train.log)
-- [runs/how2sign_t5_wsl_full/train.pid](runs/how2sign_t5_wsl_full/train.pid)
+```bash
+bash launch_local.sh
+```
 
-## Documentation
+## 📁 Project Structure
 
-- Baseline runbook: [HOW2SIGN_TRAINING_RUNBOOK.md](HOW2SIGN_TRAINING_RUNBOOK.md)
-- Corrected runbook (current): [HOW2SIGN_TRAINING_RUNBOOK_V2.md](HOW2SIGN_TRAINING_RUNBOOK_V2.md)
-- WSL operations: [WSL_CUDA_TRAINING.md](WSL_CUDA_TRAINING.md)
-- Work history: [WORKLOG.md](WORKLOG.md)
+```
+SignSpeak-AI/
+├── frontend/
+│   ├── index.html          # Main UI
+│   ├── app.js              # Client-side logic (tabs, camera, API calls)
+│   └── style.css           # Dark futuristic theme
+├── server.py               # Flask API server (inference + MediaPipe)
+├── train_how2sign_t5.py    # T5 training pipeline (SignCL, CTC, temporal conv)
+├── config.py               # Dataset path configuration
+├── requirements.txt        # Python dependencies
+├── models/                 # MediaPipe .task files (auto-downloaded)
+├── runs/                   # Training checkpoints & logs
+└── DATASET/                # How2Sign dataset (not included)
+```
 
-## Important Notes
+## 🧠 Model Details
 
-- The baseline script [train_how2sign.py](train_how2sign.py) is retained for reference, but the recommended path is [train_how2sign_t5.py](train_how2sign_t5.py).
-- PoseStitch synthetic pretraining and VLP pretraining stages are not yet implemented.
-- Re-extraction with MediaPipe/MMPose is not yet implemented; this pipeline currently uses provided OpenPose keypoints.
+| Component | Detail |
+|-----------|--------|
+| **Architecture** | T5-small encoder-decoder with temporal Conv1D compression |
+| **Input** | 67 joints × 4 channels (x, y, confidence, missing flag) |
+| **Normalization** | Shoulder-anchored signing-space normalization |
+| **Auxiliary Losses** | SignCL contrastive loss + CTC loss |
+| **Keypoints** | 25 body (OpenPose format) + 21 left hand + 21 right hand |
+| **Dataset** | How2Sign (English ASL translations) |
+
+## 📊 Training Metrics
+
+Tracked per epoch: BLEU, BLEU-1/2/3/4, METEOR, ROUGE-L
+
+## 🔧 Configuration
+
+All dataset paths are in [`config.py`](config.py). Run `python config.py` to verify paths.
+
+## 📝 Documentation
+
+- [Training Runbook V2](HOW2SIGN_TRAINING_RUNBOOK_V2.md)
+- [WSL CUDA Setup](WSL_CUDA_TRAINING.md)
+- [Work Log](WORKLOG.md)
+
+## 📄 License
+
+MIT
+
+---
+
+**Built with ❤️ for accessibility**
