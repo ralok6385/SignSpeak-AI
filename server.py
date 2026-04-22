@@ -378,8 +378,7 @@ def _infer(feat: torch.Tensor) -> tuple[str, float]:
     seq_score = out.sequences_scores[0].item() if hasattr(out, 'sequences_scores') else -1.0
     confidence = math.exp(seq_score / seq_len) if seq_score < 0 else 0.85
 
-    # TODO: remove demo fallback when model is fully trained
-    final_text = get_final_prediction(raw)
+    final_text = raw
     return final_text, round(confidence * 100, 1)
 
 
