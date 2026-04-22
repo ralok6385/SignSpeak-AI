@@ -2,7 +2,7 @@
   <img src="preview.png" alt="SignSpeak AI Banner" width="600" />
 </p>
 
-# SignSpeak AI 🤟
+# SignSpeak AI 
 
 **Real-time Sign Language → English Translation** powered by T5 Transformer + MediaPipe keypoint detection.
 
@@ -31,10 +31,10 @@ For full AI-powered translation, start the server and open http://localhost:5000
 - 🎯 **Demo Mode** — works instantly without a server (browser-only demo fallback)
 - 🌓 **Theme Support** — toggle between light and dark modes
 - 🖥️ **Premium UI** — glassmorphic interface with micro-animations
-- ⌨️ **Keyboard Shortcuts** — Space to start/stop live translation, Enter to translate video
-- 📱 **Responsive** — works on desktop and mobile
+-  **Keyboard Shortcuts** — Space to start/stop live translation, Enter to translate video
+-  **Responsive** — works on desktop and mobile
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 ┌──────────────┐     ┌─────────────────────┐     ┌──────────────┐
@@ -49,7 +49,7 @@ For full AI-powered translation, start the server and open http://localhost:5000
 
 **Pipeline:** Video Frames → MediaPipe Pose+Hand → 67-joint keypoints (x, y, conf, missing) → Shoulder-anchored normalization → T5-small encoder → English text
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### 1. Clone & Install
 

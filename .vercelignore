@@ -1,0 +1,11 @@
+requirements.txt
+*.py
+models/
+runs/
+__pycache__/
+HOW2SIGN_TRAINING_RUNBOOK.md
+HOW2SIGN_TRAINING_RUNBOOK_V2.md
+WSL_CUDA_TRAINING.md
+launch_*.sh
+launch_*.bat
+start_server.bat
