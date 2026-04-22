@@ -805,18 +805,29 @@ async function captureAndTranslate() {
       return;
     }
 
-    state.noHandsCount = 0;
-    const now = Date.now();
-    if (now - state.lastPredTime < 2000) return;
-    state.lastPredTime = now;
-
     const text = (data.prediction || '').trim();
-    if (text) updateLivePrediction(text, data.confidence);
+    const conf = data.confidence || 0;
+
+    // Only update if confidence is high enough to prevent "random" guesses
+    if (text && conf >= 75) {
+      state.noHandsCount = 0;
+      const now = Date.now();
+      if (now - state.lastPredTime < 2500) return; // Smooth updates
+      state.lastPredTime = now;
+      updateLivePrediction(text, conf);
+    } else if (text && conf > 0) {
+      // Show a subtle hint that detection is happening but confidence is low
+      dom.liveText.style.opacity = '0.5';
+      if (!dom.liveText.textContent.includes('conf')) {
+         dom.liveText.textContent = '⚡ Improving focus...';
+      }
+    }
   } catch { /* expected timeout/disconnect in live mode — silent fail to avoid UI spam */ }
 }
 
 function updateLivePrediction(text, conf) {
   if (!text) return;
+  dom.liveText.style.opacity = '1';
 
   // Add previous to history
   if (state.lastPrediction) {
