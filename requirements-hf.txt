@@ -1,0 +1,13 @@
+# SignSpeak AI — Hugging Face Spaces (inference only, CPU)
+# NOTE: torch is installed separately in the Dockerfile with CPU-only wheels
+
+flask>=3.0
+flask-cors>=4.0
+opencv-python-headless>=4.8
+numpy>=1.24
+transformers>=4.36
+mediapipe>=0.10.9
+
+# Required by train_how2sign_t5.py (imported by server.py)
+sacrebleu>=2.3
+tqdm
