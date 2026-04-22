@@ -12,7 +12,7 @@ from pathlib import Path
 
 # ── Root folders ─────────────────────────────────────────────────────────────
 # Absolute path to the project checkout
-PROJECT_ROOT = Path(r"E:\CaptioningTool")
+PROJECT_ROOT = Path(__file__).resolve().parent
 
 # Where the How2Sign dataset lives
 DATASET_ROOT = PROJECT_ROOT / "DATASET"

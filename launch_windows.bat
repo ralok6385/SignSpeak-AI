@@ -11,7 +11,7 @@ setlocal enabledelayedexpansion
 set PYTHON=E:\conda3\python.exe
 
 :: ---- Project root -------------------------------------------
-set PROJECT=E:\CaptioningTool
+set PROJECT=E:\SignSpeak-AI
 
 :: ---- Dataset paths ------------------------------------------
 set TRANSLATIONS=%PROJECT%\DATASET\English translation

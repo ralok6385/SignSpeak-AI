@@ -266,6 +266,14 @@ def clip_to_features(
     if not frame_paths:
         return torch.zeros((1, feature_dim(use_face)), dtype=torch.float32)
 
+    if do_augment and random.random() < 0.5:
+        # Temporal Speed Jitter: Randomly drop between 5% and 20% of frames
+        # to simulate a faster signing speed and improve temporal robustness.
+        drop_rate = random.uniform(0.05, 0.20)
+        keep_count = max(4, int(len(frame_paths) * (1.0 - drop_rate)))
+        idx = torch.linspace(0, len(frame_paths) - 1, steps=keep_count).long().tolist()
+        frame_paths = [frame_paths[i] for i in idx]
+
     keep = temporal_indices(len(frame_paths), max_frames=max_frames, stochastic=stochastic_sampling)
     selected = [frame_paths[i] for i in keep]
 

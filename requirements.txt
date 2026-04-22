@@ -1,0 +1,21 @@
+# SignSpeak AI — Python Dependencies
+# Install: pip install -r requirements.txt
+
+# ── Core Server ──────────────────────────────────────────────
+flask>=3.0
+flask-cors>=4.0
+opencv-python>=4.8
+numpy>=1.24
+
+# ── AI / ML ──────────────────────────────────────────────────
+torch>=2.1
+transformers>=4.36
+mediapipe>=0.10.9
+
+# ── Training Metrics ─────────────────────────────────────────
+sacrebleu>=2.3
+nltk>=3.8
+rouge-score>=0.1.2
+
+# ── Optional (evaluation) ───────────────────────────────────
+# tensorboard>=2.15

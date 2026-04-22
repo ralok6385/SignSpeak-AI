@@ -16,11 +16,15 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import math
 import os
+import random
 import sys
 import tempfile
 import threading
+import time
 import urllib.request
+from collections import deque
 from pathlib import Path
 
 import cv2
@@ -47,7 +51,7 @@ DEFAULT_CHECKPOINT = ROOT / "runs" / "how2sign_t5_full" / "best.pt"
 FRONTEND_DIR       = ROOT / "frontend"
 MAX_UPLOAD_MB      = 500
 MAX_VIDEO_FRAMES   = 64   # frames sampled from uploaded video
-LIVE_REPLICATE     = 12   # repeat single frame N times for temporal context
+LIVE_REPLICATE     = 4    # repeat single frame N times for temporal context
 
 # MediaPipe POSE → OpenPose BODY_25 index mapping
 _MP_TO_OP: dict[int, int] = {
@@ -133,8 +137,10 @@ _state: dict = {
     "max_gen_tokens": 64, "min_conf": 0.1,
     "checkpoint_epoch": None, "loaded": False, "error": None,
 }
-_lock   = threading.Lock()
-_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+_lock       = threading.Lock()
+_mp_lock    = threading.Lock()
+_device     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+_live_buffer = deque(maxlen=16)
 
 
 def _load_model(checkpoint: Path) -> None:
@@ -186,7 +192,8 @@ def _mp_frame_to_kp(frame_bgr: np.ndarray) -> tuple[torch.Tensor, bool]:
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
     # --- Pose ---
-    pose_res = _pose_detector.detect(mp_image)
+    with _mp_lock:
+        pose_res = _pose_detector.detect(mp_image)
     if pose_res.pose_landmarks:
         lms = pose_res.pose_landmarks[0]
         if len(lms) > 12:
@@ -204,7 +211,8 @@ def _mp_frame_to_kp(frame_bgr: np.ndarray) -> tuple[torch.Tensor, bool]:
 
     # --- Hands ---
     hands_detected = False
-    hand_res = _hand_detector.detect(mp_image)
+    with _mp_lock:
+        hand_res = _hand_detector.detect(mp_image)
     if hand_res.hand_landmarks and hand_res.handedness:
         hands_detected = True
         for hand_lms, handedness in zip(hand_res.hand_landmarks, hand_res.handedness):
@@ -241,7 +249,6 @@ def _frames_to_feat(frames: list[np.ndarray]) -> tuple[torch.Tensor, bool]:
     return feat.flatten(start_dim=1).unsqueeze(0), any_hands  # [1, T, D], bool
 
 
-import random
 
 # ── Demo fallback pool ─────────────────────────────────────────────────────────
 # TODO: remove demo fallback when model is fully trained
@@ -334,20 +341,32 @@ def get_final_prediction(model_output: str) -> str:
     return cleaned
 
 
-def _infer(feat: torch.Tensor) -> str:
+def _infer(feat: torch.Tensor) -> tuple[str, float]:
     model     = _state["model"]
     tokenizer = _state["tokenizer"]
     feat      = feat.to(_device)
     mask      = torch.ones(feat.size(0), feat.size(1), dtype=torch.bool, device=_device)
     with torch.no_grad():
-        ids = model.generate(
+        out = model.generate(
             src=feat,
             src_mask=mask,
             max_new_tokens=_state["max_gen_tokens"],
+            num_beams=3,
+            no_repeat_ngram_size=2,
+            early_stopping=True,
+            return_dict_in_generate=True,
+            output_scores=True
         )
-    raw = tokenizer.decode(ids[0], skip_special_tokens=True).strip()
+    ids = out.sequences[0]
+    raw = tokenizer.decode(ids, skip_special_tokens=True).strip()
+
+    seq_len = max(1, (ids != tokenizer.pad_token_id).sum().item())
+    seq_score = out.sequences_scores[0].item() if hasattr(out, 'sequences_scores') else -1.0
+    confidence = math.exp(seq_score / seq_len) if seq_score < 0 else 0.85
+
     # TODO: remove demo fallback when model is fully trained
-    return get_final_prediction(raw)
+    final_text = get_final_prediction(raw)
+    return final_text, round(confidence * 100, 1)
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
@@ -355,6 +374,11 @@ def _infer(feat: torch.Tensor) -> str:
 @app.route("/")
 def index():
     return send_from_directory(str(FRONTEND_DIR), "index.html")
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"}), 200
 
 
 @app.route("/status")
@@ -385,6 +409,7 @@ def translate_video():
         tmp_path = tmp.name
 
     try:
+        t0    = time.monotonic()
         cap   = cv2.VideoCapture(tmp_path)
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps   = cap.get(cv2.CAP_PROP_FPS) or 25.0
@@ -404,12 +429,16 @@ def translate_video():
             return jsonify({"error": "Could not read frames from video"}), 400
 
         feat, _hands = _frames_to_feat(frames)
-        prediction = _infer(feat)
+        prediction, conf = _infer(feat)
+        elapsed = round(time.monotonic() - t0, 2)
+        print(f"[server] /translate/video — {len(frames)} frames, {elapsed}s")
         return jsonify({
             "prediction":     prediction,
+            "confidence":     conf,
             "frames_sampled": len(frames),
             "total_frames":   total,
             "duration_s":     round(total / fps, 1),
+            "inference_s":    elapsed,
         })
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -440,15 +469,20 @@ def translate_frame():
         if frame is None:
             return jsonify({"error": "Could not decode image"}), 400
 
-        frames     = [frame] * LIVE_REPLICATE
+        # Implement sliding window temporal buffer for Live Mode
+        _live_buffer.append(frame)
+        if len(_live_buffer) < 4:  # wait until we have some minimum context
+            return jsonify({"prediction": "", "hands_detected": True})
+
+        frames = list(_live_buffer)
         feat, hands_detected = _frames_to_feat(frames)
 
         # Only run inference when hands are actually visible
         if not hands_detected:
-            return jsonify({"prediction": "", "hands_detected": False})
+            return jsonify({"prediction": "", "hands_detected": False, "confidence": 0})
 
-        prediction = _infer(feat)
-        return jsonify({"prediction": prediction, "hands_detected": True})
+        prediction, conf = _infer(feat)
+        return jsonify({"prediction": prediction, "hands_detected": True, "confidence": conf})
     except Exception as e:
         import traceback; traceback.print_exc()
         return jsonify({"error": str(e)}), 500
@@ -465,8 +499,11 @@ if __name__ == "__main__":
     print("=" * 60)
     print("  SignSpeak AI  —  Local Inference Server")
     print("=" * 60)
-    _load_model(args.checkpoint)
+
+    # Load model + mediapipe in background threads so server starts instantly
+    threading.Thread(target=_load_model, args=(args.checkpoint,), daemon=True).start()
     threading.Thread(target=_init_mediapipe, daemon=True).start()
+
     print(f"\n  Open your browser at:  http://localhost:{args.port}\n")
     print("=" * 60)
     app.run(host=args.host, port=args.port, debug=False, threaded=True)

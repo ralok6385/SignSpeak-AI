@@ -6,7 +6,7 @@
 set -euo pipefail
 
 # ── Paths (Windows drive letters converted to WSL mounts) ─────────────────────
-PROJECT_ROOT="/mnt/e/CaptioningTool"
+PROJECT_ROOT="/mnt/e/SignSpeak-AI"
 TRANSLATIONS_ROOT="$PROJECT_ROOT/DATASET/English translation"
 KEYPOINTS_ROOT="$PROJECT_ROOT/DATASET/2d_keypoints"
 
