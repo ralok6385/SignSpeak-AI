@@ -1,9 +1,5 @@
 {
   "buildCommand": "echo 'No build required'",
-  "framework": null,
-  "cleanUrls": true,
-  "rewrites": [
-    { "source": "/", "destination": "/frontend/index.html" },
-    { "source": "/(.*)", "destination": "/frontend/$1" }
-  ]
+  "outputDirectory": "frontend",
+  "framework": null
 }
