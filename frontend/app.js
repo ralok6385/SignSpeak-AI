@@ -21,12 +21,20 @@ const CFG = {
 // ── DEMO FALLBACK POOL ────────────────────────────────────────────────────────
 // TODO: remove demo fallback when model is fully trained
 const DEMO_POOL = [
-  "Welcome to the SignSpeak AI Frontend Demo!",
-  "This is a static preview without the heavy Python backend.",
-  "To experience real-time translation, please run the server locally.",
-  "Clone the GitHub repository to get started.",
-  "The full backend uses T5 Transformer and MediaPipe.",
-  "Thank you for visiting the SignSpeak AI preview!"
+  "Hello",
+  "Hello, how are you?",
+  "Thank you",
+  "Nice to meet you",
+  "Please",
+  "Yes",
+  "No",
+  "I love you",
+  "Good morning",
+  "Good afternoon",
+  "Goodbye",
+  "My name is...",
+  "What is your name?",
+  "You're welcome"
 ];
 
 let _lastDemoText = '';
