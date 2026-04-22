@@ -6,7 +6,7 @@
 
 // ── CONFIGURABLE CONSTANTS ────────────────────────────────────────────────────
 const CFG = {
-  API_BASE:             '',          // empty = same-origin (Flask serves frontend)
+  API_BASE:             'https://ralok-signspeak-backend.hf.space',  // Hugging Face backend
   CAPTURE_WIDTH:        640,         // resize captured frame to this width before sending
   CAPTURE_HEIGHT:       480,         // resize captured frame to this height
   NORMALIZE_SCALE:      255.0,       // divide pixel values by this (for preprocessing display)
