@@ -766,6 +766,8 @@ function startLiveTranslation() {
   dom.camScan.classList.remove('hidden');
   dom.livePanel.classList.remove('hidden');
   dom.frameCounter.classList.remove('hidden');
+  const kbdHint = $('cam-kbd-hint');
+  if (kbdHint) kbdHint.classList.remove('hidden');
   dom.liveText.textContent = 'Detecting signs…';
   dom.predHistory.innerHTML = '';
 
@@ -844,7 +846,7 @@ async function captureAndTranslate() {
 
     const text = (data.prediction || '').trim();
     if (text) updateLivePrediction(text, data.confidence);
-  } catch { /* silent fail — live mode should not interrupt */ }
+  } catch { /* expected timeout/disconnect in live mode — silent fail to avoid UI spam */ }
 }
 
 function updateLivePrediction(text, conf) {
@@ -956,3 +958,11 @@ function escapeHtml(str) {
 // BOOT
 // ══════════════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', init);
+
+// Clean up camera stream on page unload to avoid resource leaks
+window.addEventListener('beforeunload', () => {
+  if (state.cameraStream) {
+    state.cameraStream.getTracks().forEach(t => t.stop());
+  }
+  if (window.speechSynthesis) speechSynthesis.cancel();
+});
