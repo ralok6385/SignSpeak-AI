@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     libxrender1 \
     libxext6 \
+    libgles2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install CPU-only PyTorch first (much smaller than GPU version)
