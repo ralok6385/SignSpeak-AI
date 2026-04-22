@@ -25,7 +25,11 @@ COPY server.py .
 COPY config.py .
 COPY train_how2sign_t5.py .
 
-# Copy model files into a models/ directory
+# Move model weights to the expected directory (SAVE_DIR in config.py)
+RUN mkdir -p runs/how2sign_t5_full
+COPY best.pt ./runs/how2sign_t5_full/
+
+# Copy MediaPipe model files into a models/ directory
 RUN mkdir -p models
 COPY hand_landmarker.task ./models/
 COPY pose_landmarker_full.task ./models/
