@@ -22,11 +22,12 @@ from pathlib import Path
 
 # ── Pathlib Compatibility Hack (for macOS -> Linux model loading) ────────────
 import pathlib
-class PathlibMock:
-    WindowsPath = Path
-    PosixPath = Path
-pathlib._local = PathlibMock
-sys.modules['pathlib._local'] = PathlibMock
+import types
+mock_mod = types.ModuleType('pathlib._local')
+mock_mod.WindowsPath = Path
+mock_mod.PosixPath = Path
+pathlib._local = mock_mod
+sys.modules['pathlib._local'] = mock_mod
 
 import os
 import random
