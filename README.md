@@ -39,7 +39,7 @@
 
 This project is backed by formal research. The methodology, architectural decisions (like using T5 for sequential coordinate translation), and training metrics are detailed in our accompanying research paper.
 
-> **[Read the Full Research Paper (PDF) ↗](./SignSpeak_AI_Research_Paper.pdf)**
+> **[Read the Full Research Paper (PDF) ↗](./SignLanguageTranslation_ResearchPaper.pdf)**
 
 ## 🏗 Architecture
 
