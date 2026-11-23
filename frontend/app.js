@@ -323,6 +323,31 @@ function bindDropZone() {
     const file = e.dataTransfer.files[0];
     if (file) loadVideoFile(file);
   });
+
+  // Sample Videos buttons
+  const sampleHelloBtn = $('sample-hello-btn');
+  const sampleWaveBtn  = $('sample-wave-btn');
+
+  async function loadSampleVideo(url, filename) {
+    try {
+      showToast(`Loading ${filename}…`, 'info');
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Could not fetch sample video');
+      const blob = await res.blob();
+      const file = new File([blob], filename, { type: blob.type || 'video/mp4' });
+      loadVideoFile(file);
+      showToast(`Loaded ${filename}! Click 'Translate' to see gesture result.`, 'success');
+    } catch (err) {
+      showToast(`Failed to load sample: ${err.message}`, 'error');
+    }
+  }
+
+  if (sampleHelloBtn) {
+    sampleHelloBtn.addEventListener('click', () => loadSampleVideo('samples/hello_sign.mp4', 'hello_sign.mp4'));
+  }
+  if (sampleWaveBtn) {
+    sampleWaveBtn.addEventListener('click', () => loadSampleVideo('samples/wave_gesture.mp4', 'wave_gesture.mp4'));
+  }
 }
 
 function loadVideoFile(file) {
@@ -351,6 +376,8 @@ function loadVideoFile(file) {
 
   dom.videoSection.classList.remove('hidden');
   dom.dropZone.classList.add('hidden');
+  const sampleBar = $('sample-videos-bar');
+  if (sampleBar) sampleBar.classList.add('hidden');
   hideResult();
 }
 
@@ -404,6 +431,8 @@ function clearVideo() {
   dom.previewVideo.src = '';
   dom.videoSection.classList.add('hidden');
   dom.dropZone.classList.remove('hidden');
+  const sampleBar = $('sample-videos-bar');
+  if (sampleBar) sampleBar.classList.remove('hidden');
   dom.fileInput.value = '';
 
   hideResult();
