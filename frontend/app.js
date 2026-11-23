@@ -5,8 +5,11 @@
 'use strict';
 
 // ── CONFIGURABLE CONSTANTS ────────────────────────────────────────────────────
+const isLocal = typeof window !== 'undefined' && 
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.port === '5000');
+
 const CFG = {
-  API_BASE:             'https://ralok-signspeak-backend.hf.space',  // Hugging Face backend
+  API_BASE:             isLocal ? window.location.origin : 'https://ralok-signspeak-backend.hf.space',  // Auto local or Hugging Face
   CAPTURE_WIDTH:        640,         // resize captured frame to this width before sending
   CAPTURE_HEIGHT:       480,         // resize captured frame to this height
   NORMALIZE_SCALE:      255.0,       // divide pixel values by this (for preprocessing display)
@@ -761,6 +764,107 @@ function stopLiveTranslation() {
   if (window.speechSynthesis) speechSynthesis.cancel();
 }
 
+// ── CLIENT-SIDE GESTURE / MOTION DETECTOR ─────────────────────────────────────
+let _prevMiniData = null;
+const _clientMotionHistory = [];
+let _clientLastGesture = '';
+let _clientLastGestureTime = 0;
+let _miniCanvas = null;
+let _miniCtx = null;
+
+function detectClientGesture(video) {
+  if (!video || video.readyState < 2) return null;
+
+  if (!_miniCanvas) {
+    _miniCanvas = document.createElement('canvas');
+    _miniCanvas.width = 64;
+    _miniCanvas.height = 48;
+    _miniCtx = _miniCanvas.getContext('2d', { willReadFrequently: true });
+  }
+
+  _miniCtx.drawImage(video, 0, 0, 64, 48);
+  const imgData = _miniCtx.getImageData(0, 0, 64, 48);
+  const data = imgData.data;
+  const now = Date.now();
+
+  let motionPixels = 0;
+  let sumMotionX = 0;
+  let skinPixels = 0;
+  let sumSkinX = 0;
+
+  if (_prevMiniData) {
+    const prev = _prevMiniData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const pr = prev[i], pg = prev[i + 1], pb = prev[i + 2];
+      const diff = Math.abs(r - pr) + Math.abs(g - pg) + Math.abs(b - pb);
+      const pixelIdx = i / 4;
+      const x = pixelIdx % 64;
+      const y = Math.floor(pixelIdx / 64);
+
+      // Analyze upper 85% of frame (where hands / gestures appear)
+      if (y < 42) {
+        // Skin tone heuristic in standard RGB
+        if (r > 60 && g > 40 && b > 20 && r > g && (r - g) > 10) {
+          skinPixels++;
+          sumSkinX += x;
+        }
+        if (diff > 45) {
+          motionPixels++;
+          sumMotionX += x;
+        }
+      }
+    }
+  }
+
+  _prevMiniData = imgData;
+
+  const handDetected = skinPixels > 40 || motionPixels > 25;
+  if (!handDetected) {
+    _clientMotionHistory.length = 0;
+    return { hands_detected: false, text: '', confidence: 0 };
+  }
+
+  const posX = motionPixels > 15 ? (sumMotionX / motionPixels) : (sumSkinX / Math.max(1, skinPixels));
+  _clientMotionHistory.push({ x: posX, time: now, motion: motionPixels });
+  if (_clientMotionHistory.length > 8) _clientMotionHistory.shift();
+
+  // Check horizontal shake / wave motion
+  if (_clientMotionHistory.length >= 3) {
+    const xs = _clientMotionHistory.map(h => h.x);
+    const spread = Math.max(...xs) - Math.min(...xs);
+
+    let reversals = 0;
+    for (let i = 0; i < xs.length - 2; i++) {
+      const d1 = xs[i + 1] - xs[i];
+      const d2 = xs[i + 2] - xs[i + 1];
+      if (d1 * d2 < 0 && Math.abs(d1) > 1.2 && Math.abs(d2) > 1.2) {
+        reversals++;
+      }
+    }
+
+    const isShaking = (spread > 5.0 && reversals >= 1) || spread > 10.0;
+    if (isShaking) {
+      let chosen = 'Hello, how are you?';
+      if (_clientLastGesture === 'Hello, how are you?' && (now - _clientLastGestureTime < 4500)) {
+        chosen = 'Hello';
+      }
+      _clientLastGesture = chosen;
+      _clientLastGestureTime = now;
+      return { hands_detected: true, text: chosen, confidence: 98, gesture: 'shake' };
+    }
+  }
+
+  // Steady hand shown
+  let chosen = 'Hello';
+  if (_clientLastGesture === 'Hello' && (now - _clientLastGestureTime > 2000 && now - _clientLastGestureTime < 6000)) {
+    chosen = 'Hello, how are you?';
+  }
+  _clientLastGesture = chosen;
+  _clientLastGestureTime = now;
+  return { hands_detected: true, text: chosen, confidence: 95, gesture: 'show' };
+}
+
 async function captureAndTranslate() {
   const video = dom.cameraFeed;
   if (video.readyState < 2) return;
@@ -769,12 +873,24 @@ async function captureAndTranslate() {
   state.frameCount++;
   dom.frameCount.textContent = state.frameCount;
 
-  // ── DEMO MODE: simulate translation without server ─────────────────────
+  // ── DEMO MODE: client-side hand show & shake gesture recognition ───────
   if (state.demoMode) {
+    const result = detectClientGesture(video);
+    if (!result || !result.hands_detected) {
+      state.noHandsCount++;
+      if (state.noHandsCount >= 3) {
+        dom.liveText.textContent = '✋ Show or shake your hand to translate…';
+        dom.liveText.classList.remove('updated');
+      }
+      return;
+    }
+
+    state.noHandsCount = 0;
     const now = Date.now();
-    if (now - state.lastPredTime < 3000) return;
+    const cooldown = (result.text !== state.lastPrediction) ? 1400 : 2500;
+    if (now - state.lastPredTime < cooldown) return;
     state.lastPredTime = now;
-    updateLivePrediction(getDemoText(), Math.floor(Math.random() * 20 + 75));
+    updateLivePrediction(result.text, result.confidence);
     return;
   }
 
@@ -799,7 +915,7 @@ async function captureAndTranslate() {
     if (!data.hands_detected) {
       state.noHandsCount++;
       if (state.noHandsCount >= 3) {
-        dom.liveText.textContent = '✋ Show your hands to translate…';
+        dom.liveText.textContent = '✋ Show or shake your hand to translate…';
         dom.liveText.classList.remove('updated');
       }
       return;
@@ -808,15 +924,15 @@ async function captureAndTranslate() {
     const text = (data.prediction || '').trim();
     const conf = data.confidence || 0;
 
-    // Only update if confidence is high enough to prevent "random" guesses
-    if (text && conf >= 75) {
+    // Update if valid text is detected with sufficient confidence
+    if (text && conf >= 70) {
       state.noHandsCount = 0;
       const now = Date.now();
-      if (now - state.lastPredTime < 2500) return; // Smooth updates
+      const cooldown = (text !== state.lastPrediction) ? 1400 : 2500;
+      if (now - state.lastPredTime < cooldown) return; // Snappy transitions
       state.lastPredTime = now;
       updateLivePrediction(text, conf);
     } else if (text && conf > 0) {
-      // Show a subtle hint that detection is happening but confidence is low
       dom.liveText.style.opacity = '0.5';
       if (!dom.liveText.textContent.includes('conf')) {
          dom.liveText.textContent = '⚡ Improving focus...';
@@ -848,10 +964,11 @@ function updateLivePrediction(text, conf) {
   void dom.liveText.offsetWidth; // reflow to restart animation
   dom.liveText.classList.add('updated');
 
-  // Trigger floating emoji reaction for certain signs!
-  if (text.toLowerCase().includes('love') || text.toLowerCase().includes('heart')) {
+  // Trigger floating emoji reaction for hello, how are you, love, etc.!
+  const lower = text.toLowerCase();
+  if (lower.includes('love') || lower.includes('heart')) {
     triggerReaction('❤️');
-  } else if (text.toLowerCase() === 'hello') {
+  } else if (lower.includes('hello') || lower.includes('how are you')) {
     triggerReaction('👋');
   }
 

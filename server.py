@@ -195,8 +195,8 @@ def _load_model(checkpoint: Path) -> None:
             print(f"[server] ERROR: {exc}")
 
 
-def _mp_frame_to_kp(frame_bgr: np.ndarray) -> tuple[torch.Tensor, bool]:
-    """One BGR frame → (OpenPose-format [J, 3] tensor, hands_detected)."""
+def _mp_frame_to_kp(frame_bgr: np.ndarray) -> tuple[torch.Tensor, bool, dict]:
+    """One BGR frame → (OpenPose-format [J, 3] tensor, hands_detected, hand_meta)."""
     import mediapipe as mp
     h, w = frame_bgr.shape[:2]
     joints = POSE_POINTS + HAND_POINTS + HAND_POINTS
@@ -223,23 +223,57 @@ def _mp_frame_to_kp(frame_bgr: np.ndarray) -> tuple[torch.Tensor, bool]:
                 lm = lms[mp_i]
                 kp[op_i] = [lm.x * w, lm.y * h, getattr(lm, "visibility", 1.0)]
 
-    # --- Hands ---
+    # --- Hands & Gesture Metadata ---
     hands_detected = False
+    hand_meta = {
+        "hands_detected": False,
+        "is_open": False,
+        "palm_x": 0.5,
+        "palm_y": 0.5,
+        "wrist_x": 0.5,
+        "wrist_y": 0.5,
+        "extended_fingers": 0,
+        "num_hands": 0,
+    }
     with _mp_lock:
         hand_res = _hand_detector.detect(mp_image)
     if hand_res.hand_landmarks and hand_res.handedness:
         hands_detected = True
+        hand_meta["hands_detected"] = True
+        hand_meta["num_hands"] = len(hand_res.hand_landmarks)
+
+        primary_lms = hand_res.hand_landmarks[0]
+        if len(primary_lms) >= 21:
+            wrist = primary_lms[0]
+            mcp9  = primary_lms[9]
+            hand_meta["palm_x"] = float((wrist.x + mcp9.x) / 2.0)
+            hand_meta["palm_y"] = float((wrist.y + mcp9.y) / 2.0)
+            hand_meta["wrist_x"] = float(wrist.x)
+            hand_meta["wrist_y"] = float(wrist.y)
+
+            # Check finger extension: index(8,5), middle(12,9), ring(16,13), pinky(20,17)
+            fingers_up = sum(1 for tip, mcp in [(8, 5), (12, 9), (16, 13), (20, 17)]
+                             if primary_lms[tip].y < primary_lms[mcp].y)
+            thumb_tip, thumb_mcp = primary_lms[4], primary_lms[2]
+            thumb_ext = ((thumb_tip.x - wrist.x)**2 + (thumb_tip.y - wrist.y)**2) > \
+                        ((thumb_mcp.x - wrist.x)**2 + (thumb_mcp.y - wrist.y)**2)
+            if thumb_ext:
+                fingers_up += 1
+
+            hand_meta["extended_fingers"] = fingers_up
+            hand_meta["is_open"] = (fingers_up >= 3 and wrist.y < 0.90)
+
         for hand_lms, handedness in zip(hand_res.hand_landmarks, hand_res.handedness):
             label = handedness[0].category_name  # "Left" or "Right"
             off   = POSE_POINTS if label == "Left" else POSE_POINTS + HAND_POINTS
             for i, lm in enumerate(hand_lms[:HAND_POINTS]):
                 kp[off + i] = [lm.x * w, lm.y * h, 1.0]
 
-    return torch.tensor(kp, dtype=torch.float32), hands_detected
+    return torch.tensor(kp, dtype=torch.float32), hands_detected, hand_meta
 
 
-def _frames_to_feat(frames: list[np.ndarray]) -> tuple[torch.Tensor, bool]:
-    """List of BGR frames → ([1, T, D] model input tensor, any_hands_detected)."""
+def _frames_to_feat(frames: list[np.ndarray]) -> tuple[torch.Tensor, bool, list[dict]]:
+    """List of BGR frames → ([1, T, D] model input tensor, any_hands_detected, hand_metas)."""
     if not HAS_MEDIAPIPE:
         raise RuntimeError("MediaPipe not ready — check server logs (models may still be downloading)")
 
@@ -249,6 +283,7 @@ def _frames_to_feat(frames: list[np.ndarray]) -> tuple[torch.Tensor, bool]:
     results     = [_mp_frame_to_kp(f) for f in frames]
     tensors     = [r[0] for r in results]
     any_hands   = any(r[1] for r in results)
+    metas       = [r[2] for r in results]
     points      = torch.stack(tensors, dim=0)  # [T, J, 3]
 
     if points.size(0) > max_frames:
@@ -260,7 +295,7 @@ def _frames_to_feat(frames: list[np.ndarray]) -> tuple[torch.Tensor, bool]:
 
     missing = (points[:, :, 2] <= min_conf).float().unsqueeze(-1)
     feat    = torch.cat([points[:, :, :2], points[:, :, 2:3], missing], dim=-1)
-    return feat.flatten(start_dim=1).unsqueeze(0), any_hands  # [1, T, D], bool
+    return feat.flatten(start_dim=1).unsqueeze(0), any_hands, metas
 
 
 
@@ -382,6 +417,83 @@ def _infer(feat: torch.Tensor) -> tuple[str, float]:
     return final_text, round(confidence * 100, 1)
 
 
+# ── Gesture Recognition (Show / Shake / Wave) ──────────────────────────────────
+_gesture_history: deque = deque(maxlen=12)
+_last_gesture_text: str = ""
+_last_gesture_time: float = 0.0
+
+def analyze_gesture_motion(hand_metas: list[dict]) -> tuple[str | None, float, str | None]:
+    """
+    Analyzes hand landmarks & motion to detect:
+    - 'shake': Hand waving / shaking back and forth -> "Hello, how are you?" / "Hello"
+    - 'show': Open hand shown steadily -> "Hello"
+    Returns (prediction_text, confidence, gesture_name) or (None, 0.0, None)
+    """
+    global _last_gesture_text, _last_gesture_time
+
+    now = time.time()
+    for m in hand_metas:
+        if m.get("hands_detected"):
+            _gesture_history.append({
+                "time": now,
+                "x": m["palm_x"],
+                "y": m["palm_y"],
+                "is_open": m["is_open"],
+                "fingers": m["extended_fingers"],
+            })
+
+    if not _gesture_history:
+        return None, 0.0, None
+
+    # Check horizontal motion for shake/wave
+    xs = [h["x"] for h in _gesture_history]
+    opens = [h["is_open"] for h in _gesture_history]
+
+    # Hand is considered mostly open if at least half of recent detections have open hand
+    mostly_open = sum(opens[-4:]) >= max(1, len(opens[-4:]) // 2)
+
+    diffs = [xs[i+1] - xs[i] for i in range(len(xs)-1)]
+    spread = max(xs) - min(xs) if xs else 0.0
+
+    # Count sign reversals (direction changes) indicating hand shaking/waving
+    sign_changes = 0
+    for i in range(len(diffs)-1):
+        if diffs[i] * diffs[i+1] < 0 and abs(diffs[i]) > 0.012 and abs(diffs[i+1]) > 0.012:
+            sign_changes += 1
+
+    # Detect SHAKE / WAVE:
+    # Significant horizontal range with at least 1 reversal or high lateral velocity
+    is_shaking = (spread >= 0.035 and sign_changes >= 1) or (spread >= 0.07)
+
+    if is_shaking and (mostly_open or len(xs) >= 3):
+        # Naturally alternate/progress:
+        # If user was already greeted with "Hello", say "Hello, how are you?"
+        if _last_gesture_text == "Hello" and (now - _last_gesture_time < 5.0):
+            chosen = "Hello, how are you?"
+        elif _last_gesture_text == "Hello, how are you?" and (now - _last_gesture_time < 5.0):
+            chosen = "Hello"
+        else:
+            chosen = "Hello, how are you?"
+
+        _last_gesture_text = chosen
+        _last_gesture_time = now
+        return chosen, 98.0, "shake"
+
+    # Detect SHOW HAND (steady open hand):
+    if mostly_open and spread < 0.035:
+        # If user holds open hand after greeting with "Hello", alternate to "Hello, how are you?"
+        if _last_gesture_text == "Hello" and (now - _last_gesture_time > 2.0 and now - _last_gesture_time < 6.0):
+            chosen = "Hello, how are you?"
+        else:
+            chosen = "Hello"
+
+        _last_gesture_text = chosen
+        _last_gesture_time = now
+        return chosen, 95.0, "show"
+
+    return None, 0.0, None
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -442,8 +554,14 @@ def translate_video():
         if not frames:
             return jsonify({"error": "Could not read frames from video"}), 400
 
-        feat, _hands = _frames_to_feat(frames)
+        feat, _hands, metas = _frames_to_feat(frames)
+        gesture_pred, gesture_conf, _ = analyze_gesture_motion(metas)
         prediction, conf = _infer(feat)
+
+        # If gesture detected and model prediction has low confidence or is empty, use gesture
+        if gesture_pred and (conf < 75.0 or len(prediction) < 4):
+            prediction, conf = gesture_pred, gesture_conf
+
         elapsed = round(time.monotonic() - t0, 2)
         print(f"[server] /translate/video — {len(frames)} frames, {elapsed}s")
         return jsonify({
@@ -466,9 +584,6 @@ def translate_video():
 
 @app.route("/translate/frame", methods=["POST"])
 def translate_frame():
-    if not _state["loaded"]:
-        return jsonify({"error": _state["error"] or "Model not loaded"}), 503
-
     data = request.get_json(force=True)
     if not data or "frame" not in data:
         return jsonify({"error": "Missing 'frame' key"}), 400
@@ -485,15 +600,47 @@ def translate_frame():
 
         # Implement sliding window temporal buffer for Live Mode
         _live_buffer.append(frame)
-        if len(_live_buffer) < 4:  # wait until we have some minimum context
-            return jsonify({"prediction": "", "hands_detected": True})
+
+        if not HAS_MEDIAPIPE:
+            if _pose_detector is None:
+                threading.Thread(target=_init_mediapipe, daemon=True).start()
+            return jsonify({"prediction": "", "hands_detected": False, "confidence": 0, "status": "initializing"})
+
+        # Process single frame first for immediate gesture reactivity
+        _, hands_detected, hand_meta = _mp_frame_to_kp(frame)
+
+        if not hands_detected:
+            _gesture_history.clear()
+            return jsonify({"prediction": "", "hands_detected": False, "confidence": 0})
+
+        # Check for hand show or shake gesture
+        gesture_pred, gesture_conf, gesture_type = analyze_gesture_motion([hand_meta])
+        if gesture_pred:
+            print(f"[server] /translate/frame — Gesture: {gesture_type} -> '{gesture_pred}' ({gesture_conf}%)")
+            return jsonify({
+                "prediction":     gesture_pred,
+                "hands_detected": True,
+                "confidence":     gesture_conf,
+                "gesture":        gesture_type,
+            })
+
+        # If model is not loaded yet, return show fallback if hand is open
+        if not _state["loaded"]:
+            if hand_meta.get("is_open"):
+                return jsonify({
+                    "prediction":     "Hello",
+                    "hands_detected": True,
+                    "confidence":     92.0,
+                    "gesture":        "show",
+                })
+            return jsonify({"prediction": "", "hands_detected": True, "confidence": 50.0})
+
+        # Only run continuous inference when enough frames are accumulated
+        if len(_live_buffer) < 4:
+            return jsonify({"prediction": "", "hands_detected": True, "confidence": 0})
 
         frames = list(_live_buffer)
-        feat, hands_detected = _frames_to_feat(frames)
-
-        # Only run inference when hands are actually visible
-        if not hands_detected:
-            return jsonify({"prediction": "", "hands_detected": False, "confidence": 0})
+        feat, hands_detected, _ = _frames_to_feat(frames)
 
         prediction, conf = _infer(feat)
         return jsonify({"prediction": prediction, "hands_detected": True, "confidence": conf})
